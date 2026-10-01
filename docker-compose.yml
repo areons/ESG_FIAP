@@ -1,0 +1,50 @@
+# Orquestracao local: aplicacao + PostgreSQL
+# Uso:  cp .env.example .env && docker compose up -d --build
+name: cidades-esg
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cidades_esg}
+      POSTGRES_USER: ${POSTGRES_USER:-esg}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data     # dados persistem entre reinicios
+    networks:
+      - esg-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-local}
+    image: cidades-esg:${APP_VERSION:-local}
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      APP_SEED: ${APP_SEED:-true}
+      DB_SCHEMA: ${DB_SCHEMA:-public}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-cidades_esg}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-esg}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy          # so sobe depois do banco aceitar conexoes
+    networks:
+      - esg-net
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+
+networks:
+  esg-net:
+    driver: bridge
